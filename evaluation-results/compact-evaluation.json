@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-06-04T03:38:01.635467+00:00",
+  "aggregate": {
+    "course_compacts_processed": 3,
+    "topics_extracted": 24,
+    "searchable_topics": 22,
+    "non_searchable_topics": 2,
+    "candidate_resources": 110,
+    "average_candidates_per_searchable_topic": 5.0,
+    "average_extraction_confidence": 0.683,
+    "total_elapsed_seconds": 0.95
+  },
+  "courses": [
+    {
+      "pdf": "/Users/kxgbaorun/Downloads/MAT225 Course Compact_2324.pdf",
+      "course_id": 1,
+      "course_code": "MAT225",
+      "course_title": "Abstract Algebra",
+      "topics_extracted": 12,
+      "searchable_topics": 12,
+      "non_searchable_topics": 0,
+      "candidate_resources": 60,
+      "average_candidates_per_searchable_topic": 5.0,
+      "minimum_candidates_for_a_searchable_topic": 5,
+      "average_extraction_confidence": 0.68,
+      "approved_resource_id": 1,
+      "json_export_topics": 12,
+      "csv_export_rows": 1,
+      "elapsed_seconds": 0.54
+    },
+    {
+      "pdf": "/Users/kxgbaorun/Downloads/CSC216_Course_Compact.pdf",
+      "course_id": 2,
+      "course_code": "CSC216",
+      "course_title": "Foundations of Sequential and Parallel Programming",
+      "topics_extracted": 5,
+      "searchable_topics": 5,
+      "non_searchable_topics": 0,
+      "candidate_resources": 25,
+      "average_candidates_per_searchable_topic": 5.0,
+      "minimum_candidates_for_a_searchable_topic": 5,
+      "average_extraction_confidence": 0.66,
+      "approved_resource_id": 2,
+      "json_export_topics": 5,
+      "csv_export_rows": 1,
+      "elapsed_seconds": 0.2
+    },
+    {
+      "pdf": "/Users/kxgbaorun/Documents/2025_2026 NUC-COS331_CSC415 AI_Course_Compact.pdf",
+      "course_id": 3,
+      "course_code": "NUC-COS331 / CSC415",
+      "course_title": "Artificial Intelligence",
+      "topics_extracted": 7,
+      "searchable_topics": 5,
+      "non_searchable_topics": 2,
+      "candidate_resources": 25,
+      "average_candidates_per_searchable_topic": 5.0,
+      "minimum_candidates_for_a_searchable_topic": 5,
+      "average_extraction_confidence": 0.709,
+      "approved_resource_id": 3,
+      "json_export_topics": 7,
+      "csv_export_rows": 1,
+      "elapsed_seconds": 0.21
+    }
+  ]
+}

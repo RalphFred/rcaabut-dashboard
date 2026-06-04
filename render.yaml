@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: rcaabut-dashboard-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python -m app.db.init_db
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/ready
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rcaabut-dashboard-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_ORIGINS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: SEED_SUPER_ADMIN_EMAIL
+        value: admin@rcaabut.local
+      - key: SEED_SUPER_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_SUPER_ADMIN_NAME
+        value: RCAABUT Super Admin
+
+  - type: web
+    name: rcaabut-dashboard-web
+    runtime: node
+    rootDir: frontend
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start --hostname 0.0.0.0 --port $PORT
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+
+databases:
+  - name: rcaabut-dashboard-db
+    databaseName: rcaabut_dashboard
+    user: rcaabut_dashboard
