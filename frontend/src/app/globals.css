@@ -1,10 +1,12 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   color-scheme: light;
-  background: #f7f8fb;
+  background: #f5f6f8;
 }
 
 * {
@@ -13,10 +15,10 @@
 
 body {
   margin: 0;
-  background: #f7f8fb;
+  background: #f5f6f8;
   color: #20232d;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Montserrat, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
 }
 
@@ -33,7 +35,7 @@ textarea {
 
 @layer components {
   .control {
-    @apply w-full rounded-lg border border-library-line bg-white px-3 py-2.5 text-sm text-library-ink outline-none transition placeholder:text-library-muted/70 focus:border-library-purple focus:ring-4 focus:ring-library-purple/10;
+    @apply w-full rounded-lg border border-library-line bg-white px-3 py-2.5 text-sm font-medium text-library-ink outline-none transition placeholder:text-library-muted/70 focus:border-library-purple focus:ring-4 focus:ring-library-purple/10;
   }
 
   .control:disabled {
@@ -41,11 +43,11 @@ textarea {
   }
 
   .label {
-    @apply text-[0.7rem] font-bold uppercase tracking-[0.14em] text-library-purple;
+    @apply text-[0.68rem] font-extrabold uppercase tracking-[0.14em] text-library-purple;
   }
 
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-extrabold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-primary {
@@ -61,11 +63,11 @@ textarea {
   }
 
   .panel {
-    @apply rounded-xl border border-library-line bg-white shadow-soft;
+    @apply rounded-lg border border-library-line bg-white shadow-soft;
   }
 
   .panel-flat {
-    @apply rounded-xl border border-library-line bg-white;
+    @apply rounded-lg border border-library-line bg-white;
   }
 
   .icon-button {

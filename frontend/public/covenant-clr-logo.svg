@@ -1,0 +1,33 @@
+<svg width="560" height="170" viewBox="0 0 560 170" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Covenant Centre for Learning Resources</title>
+  <desc id="desc">Covenant Centre for Learning Resources logo mark and wordmark.</desc>
+  <defs>
+    <radialGradient id="globe" cx="50%" cy="42%" r="58%">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.45" stop-color="#7b8798"/>
+      <stop offset="1" stop-color="#1a2030"/>
+    </radialGradient>
+    <linearGradient id="ribbon" x1="15" y1="122" x2="116" y2="151" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3f1c4d"/>
+      <stop offset="0.5" stop-color="#8a2b8e"/>
+      <stop offset="1" stop-color="#3f1c4d"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#111827" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <g filter="url(#softShadow)">
+    <path d="M15 126C38 116 66 117 92 126C104 130 118 131 133 128L119 148C93 153 60 149 37 140C27 136 16 134 5 136L15 126Z" fill="url(#ribbon)"/>
+    <path d="M71 8C96 8 117 28 117 54C117 80 96 101 71 101C45 101 25 80 25 54C25 28 45 8 71 8Z" fill="url(#globe)" stroke="#e5e7ef" stroke-width="4"/>
+    <path d="M71 18C85 28 92 39 92 54C92 69 85 81 71 91C57 81 50 69 50 54C50 39 57 28 71 18Z" stroke="#d8dde8" stroke-width="3" opacity="0.8"/>
+    <path d="M33 54H109M71 13V96" stroke="#d8dde8" stroke-width="3" opacity="0.55"/>
+    <path d="M60 38H82C86 38 89 41 89 45V81H74V62H68V81H53V45C53 41 56 38 60 38Z" fill="#f8fafc"/>
+    <path d="M71 32V87M51 55H91" stroke="#058447" stroke-width="10" stroke-linecap="round"/>
+    <path d="M71 32V87M51 55H91" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+    <path d="M45 113C61 119 81 120 98 115" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+  </g>
+  <g>
+    <text x="148" y="69" fill="#111318" font-family="Montserrat, Arial Black, sans-serif" font-size="58" font-weight="900" letter-spacing="-1">COVENANT</text>
+    <text x="150" y="112" fill="#98298f" font-family="Montserrat, Arial, sans-serif" font-size="30" font-weight="800" letter-spacing="1">CENTRE FOR LEARNING RESOURCES</text>
+  </g>
+</svg>

@@ -2,15 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
   BookOpen,
   Check,
-  CircleUserRound,
   Database,
   Edit3,
   Download,
   FileUp,
   FolderOpen,
-  Library,
   KeyRound,
   Loader2,
   LogOut,
@@ -49,6 +48,67 @@ const categories = [
 ];
 
 const sessionStorageKey = "rcaabut-dashboard-session";
+
+const sidebarRoutes = [
+  { label: "Dashboard", href: "/dashboard", view: "dashboard", icon: PanelLeft },
+  { label: "User Management", href: "/user-management", view: "users", icon: UsersRound, superAdminOnly: true },
+  { label: "Courses", href: "/courses", view: "courses", icon: BookOpen },
+  { label: "Upload Compact", href: "/upload-compact", view: "upload", icon: FileUp },
+  { label: "Reports", href: "/reports", view: "reports", icon: BarChart3 },
+  { label: "Settings", href: "/settings", view: "settings", icon: Settings2 }
+];
+
+type DashboardView = "dashboard" | "users" | "courses" | "upload" | "reports" | "settings";
+
+const viewTitles: Record<DashboardView, { eyebrow: string; title: string; description: string }> = {
+  dashboard: {
+    eyebrow: "Repository Overview",
+    title: "Dashboard",
+    description: "Monitor repository activity, course extraction status, approvals, and export readiness from one calm workspace."
+  },
+  users: {
+    eyebrow: "Super Admin",
+    title: "User Management",
+    description: "Create library staff accounts, adjust roles, reset passwords, and keep account access tidy."
+  },
+  courses: {
+    eyebrow: "Course Repository",
+    title: "Courses",
+    description: "Browse uploaded compacts, select a course, edit metadata, review topics, and curate approved records."
+  },
+  upload: {
+    eyebrow: "Upload Compact",
+    title: "Upload a course compact",
+    description: "Start a new course extraction by uploading a PDF compact for topic review and resource generation."
+  },
+  reports: {
+    eyebrow: "Reports",
+    title: "Reports and exports",
+    description: "Review prototype metrics, activity history, export records, and generated files."
+  },
+  settings: {
+    eyebrow: "Settings",
+    title: "Account and sources",
+    description: "Change your password and manage discovery connector availability."
+  }
+};
+
+function pathToView(pathname: string, role?: Role): DashboardView {
+  const pathMap: Record<string, DashboardView> = {
+    "/": "dashboard",
+    "/dashboard": "dashboard",
+    "/user-management": "users",
+    "/courses": "courses",
+    "/upload-compact": "upload",
+    "/reports": "reports",
+    "/settings": "settings"
+  };
+  const value = pathMap[pathname] || "dashboard";
+  if (value === "users" && role !== "super_admin") {
+    return "dashboard";
+  }
+  return value;
+}
 
 type CourseDetail = {
   course: Course;
@@ -112,6 +172,7 @@ export default function Home() {
   const [message, setMessage] = useState("Sign in with the seeded Super Admin account to begin.");
   const [booting, setBooting] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [activeView, setActiveView] = useState<DashboardView>("dashboard");
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [userPasswords, setUserPasswords] = useState<Record<number, string>>({});
@@ -189,6 +250,18 @@ export default function Home() {
   }, [courses.length, detail]);
 
   useEffect(() => {
+    function syncView() {
+      setActiveView(pathToView(window.location.pathname, session?.user.role));
+    }
+
+    syncView();
+    window.addEventListener("popstate", syncView);
+    return () => window.removeEventListener("popstate", syncView);
+  }, [session?.user.role]);
+
+  const currentView = session ? viewTitles[activeView] : null;
+
+  useEffect(() => {
     if (!manualResource.topic_id) {
       return;
     }
@@ -242,6 +315,12 @@ export default function Home() {
     const payload = await apiRequest<{ users: User[] }>("/users", {}, token);
     setUsers(payload.users);
   }, [session?.user.role, token]);
+
+  useEffect(() => {
+    if (activeView === "users") {
+      refreshUsers().catch((error) => setMessage(error instanceof Error ? error.message : "Could not refresh users."));
+    }
+  }, [activeView, refreshUsers]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(sessionStorageKey);
@@ -904,33 +983,10 @@ export default function Home() {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-library-paper px-5 py-8 md:px-10">
-        <section className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_420px]">
-          <div className="max-w-3xl">
+      <main className="grid min-h-screen place-items-center bg-library-paper px-5 py-8">
+        <section className="w-full max-w-[430px]">
+          <div className="mb-8 flex justify-center">
             <BrandLogo />
-            <div className="mt-12">
-              <p className="label">Course Resource Repository</p>
-              <h1 className="mt-3 max-w-3xl text-4xl font-extrabold leading-tight text-library-ink md:text-6xl">
-                Build curated course collections with less manual searching.
-              </h1>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-library-muted">
-                Upload course compacts, edit the teaching topics, review the top recommendations, and export clean RCAABUT records.
-              </p>
-            </div>
-            <div className="mt-10 grid max-w-2xl gap-3 sm:grid-cols-3">
-              <div className="panel-flat p-4">
-                <p className="text-2xl font-extrabold text-library-purple">2</p>
-                <p className="mt-1 text-sm font-semibold text-library-muted">Admin roles</p>
-              </div>
-              <div className="panel-flat p-4">
-                <p className="text-2xl font-extrabold text-library-purple">5</p>
-                <p className="mt-1 text-sm font-semibold text-library-muted">Resources per topic</p>
-              </div>
-              <div className="panel-flat p-4">
-                <p className="text-2xl font-extrabold text-library-purple">6</p>
-                <p className="mt-1 text-sm font-semibold text-library-muted">RCAABUT categories</p>
-              </div>
-            </div>
           </div>
           <form onSubmit={handleLogin} className="panel p-6 md:p-7">
             <div className="mb-6 flex items-center justify-between border-b border-library-line pb-5">
@@ -969,338 +1025,321 @@ export default function Home() {
     );
   }
 
+  const visibleRoutes = sidebarRoutes.filter((route) => !route.superAdminOnly || session.user.role === "super_admin");
+
   return (
-    <main className="min-h-screen bg-library-paper">
-      <header className="sticky top-0 z-30 border-b border-library-line bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[1500px] flex-col gap-4 px-4 py-4 md:px-6 lg:flex-row lg:items-center lg:justify-between">
+    <main className="min-h-screen bg-library-paper lg:grid lg:grid-cols-[304px_minmax(0,1fr)]">
+      <aside className="border-b border-library-line bg-white px-4 py-5 shadow-soft lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r lg:px-5">
+        <div className="flex min-h-full flex-col gap-5">
           <BrandLogo compact />
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="soft-chip">
-              <Shield size={14} />
-              {roleLabel(session.user.role)}
-            </span>
-            <span className="soft-chip">
-              <CircleUserRound size={14} />
-              {session.user.full_name}
-            </span>
-            <button className="btn-secondary" onClick={signOut}>
-              <LogOut size={16} />
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
 
-      <div className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-6 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-4 lg:sticky lg:top-[92px] lg:max-h-[calc(100vh-112px)] lg:overflow-y-auto lg:pr-1">
-          <section className="panel p-4">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-lg bg-library-blue text-library-ink">
-                <PanelLeft size={20} />
-              </div>
-              <div>
-                <p className="label">Console</p>
-                <h2 className="text-lg font-extrabold">Repository Desk</h2>
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-lg bg-library-paper p-3">
-                <p className="font-extrabold text-library-ink">{stats.courses}</p>
-                <p className="text-xs font-semibold text-library-muted">Courses</p>
-              </div>
-              <div className="rounded-lg bg-library-paper p-3">
-                <p className="font-extrabold text-library-ink">{stats.approved}</p>
-                <p className="text-xs font-semibold text-library-muted">Approved</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel p-4">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <p className="label">Courses</p>
-                <h2 className="text-lg font-extrabold">Compacts</h2>
-              </div>
-              <button className="icon-button" onClick={() => refreshCourses()} title="Refresh courses" aria-label="Refresh courses">
-                <RefreshCw className={busy ? "animate-spin" : undefined} size={16} />
-              </button>
-            </div>
-            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-              {courses.map((course) => (
-                <button
-                  key={course.id}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    selectedCourseId === course.id
-                      ? "border-library-purple bg-library-purple/10 shadow-soft"
-                      : "border-library-line bg-white hover:border-library-purple/30 hover:bg-library-paper"
+          <nav className="space-y-1" aria-label="Dashboard routes">
+            {visibleRoutes.map((route) => {
+              const Icon = route.icon;
+              const isActive = activeView === route.view;
+              return (
+                <a
+                  key={route.href}
+                  href={route.href}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition ${
+                    isActive
+                      ? "bg-library-purple/10 text-library-purple"
+                      : "text-library-muted hover:bg-library-purple/10 hover:text-library-purple"
                   }`}
-                  onClick={() => loadCourse(course.id)}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-extrabold text-library-ink">{course.course_code}</p>
-                      <p className="mt-1 line-clamp-2 text-sm text-library-muted">{course.course_title}</p>
-                    </div>
-                    <FolderOpen className="mt-0.5 shrink-0 text-library-purple" size={16} />
-                  </div>
-                  <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-library-purple">{statusLabel(course.status)}</p>
-                </button>
-              ))}
-              {courses.length === 0 ? <EmptyLine icon={<FolderOpen size={16} />} text="No compacts uploaded yet." /> : null}
-            </div>
-          </section>
+                  <Icon size={17} />
+                  <span>{route.label}</span>
+                </a>
+              );
+            })}
+          </nav>
 
-          <form onSubmit={handleUpload} className="panel p-4">
-            <p className="label">Upload Compact</p>
-            <label className="mt-3 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-library-purple/35 bg-library-purple/5 px-4 py-6 text-center transition hover:border-library-purple">
-              <FileUp className="mb-2 text-library-purple" />
-              <span className="text-sm font-bold text-library-ink">{selectedFile?.name || "Choose PDF"}</span>
-              <span className="mt-1 text-xs text-library-muted">Course compact only</span>
-              <input
-                type="file"
-                accept="application/pdf"
-                className="sr-only"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
-              />
-            </label>
-            <button className="btn-primary mt-3 w-full" disabled={busy || !selectedFile}>
-              {busy ? <Loader2 className="animate-spin" size={16} /> : <FileUp size={16} />}
-              Upload & Extract
-            </button>
-          </form>
+          <button className="btn-secondary mt-auto w-full justify-start" onClick={signOut}>
+            <LogOut size={16} />
+            Sign out
+          </button>
+        </div>
+      </aside>
 
-          <form onSubmit={changeOwnPassword} className="panel p-4">
-            <p className="label">Account</p>
-            <h2 className="mt-1 text-lg font-bold">Change Password</h2>
-            <input
-              className="control mt-3"
-              type="password"
-              placeholder="Current password"
-              value={accountPassword.current_password}
-              onChange={(event) => setAccountPassword({ ...accountPassword, current_password: event.target.value })}
-              required
-            />
-            <input
-              className="control mt-2"
-              type="password"
-              placeholder="New password"
-              value={accountPassword.new_password}
-              onChange={(event) => setAccountPassword({ ...accountPassword, new_password: event.target.value })}
-              required
-            />
-            <input
-              className="control mt-2"
-              type="password"
-              placeholder="Confirm new password"
-              value={accountPassword.confirm_password}
-              onChange={(event) => setAccountPassword({ ...accountPassword, confirm_password: event.target.value })}
-              required
-            />
-            <button className="btn-secondary mt-3 w-full" disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" size={16} /> : <KeyRound size={16} />}
-              Change Password
-            </button>
-          </form>
+      <div className="min-w-0 px-4 py-5 md:px-6 lg:px-8">
+        <section className="mx-auto max-w-[1180px] space-y-5">
+          {currentView ? <PageHeader eyebrow={currentView.eyebrow} title={currentView.title} description={currentView.description} /> : null}
 
-          {session.user.role === "super_admin" ? (
+          {activeView === "dashboard" ? (
             <>
-              <form onSubmit={handleCreateUser} className="panel p-4">
-                <p className="label">Super Admin</p>
-                <h2 className="mt-1 text-lg font-extrabold">Create User</h2>
-                <input
-                  className="control mt-3"
-                  placeholder="Full name"
-                  value={newUser.full_name}
-                  onChange={(event) => setNewUser({ ...newUser, full_name: event.target.value })}
-                />
-                <input
-                  className="control mt-2"
-                  placeholder="Email"
-                  value={newUser.email}
-                  onChange={(event) => setNewUser({ ...newUser, email: event.target.value })}
-                />
-                <input
-                  className="control mt-2"
-                  placeholder="Password"
-                  type="password"
-                  value={newUser.password}
-                  onChange={(event) => setNewUser({ ...newUser, password: event.target.value })}
-                />
-                <select
-                  className="control mt-2"
-                  value={newUser.role}
-                  onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}
-                >
-                  <option value="library_staff">Library Staff</option>
-                  <option value="super_admin">Super Admin</option>
-                </select>
-                <button className="btn-gold mt-3 w-full" disabled={busy}>
-                  {busy ? <Loader2 className="animate-spin" size={16} /> : <UserPlus size={16} />}
-                  Create
-                </button>
-                <div className="mt-4 space-y-2">
-                  {users.slice(0, 6).map((user) => (
-                    <div key={user.id} className="rounded-lg border border-library-line bg-library-paper p-3 text-xs">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <strong>{user.full_name}</strong>
-                          <span className="block text-library-muted">
-                            {roleLabel(user.role)} · {user.is_active ? "Active" : "Inactive"}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple"
-                          disabled={user.id === session.user.id}
-                          onClick={() => updateUser(user.id, { is_active: !user.is_active })}
-                          title={user.id === session.user.id ? "You cannot disable your own account" : undefined}
-                        >
-                          {user.id === session.user.id ? "Current" : user.is_active ? "Disable" : "Enable"}
-                        </button>
-                      </div>
-                      {user.id !== session.user.id ? (
-                        <button
-                          type="button"
-                          className="mt-2 rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple"
-                          onClick={() =>
-                            updateUser(user.id, {
-                              role: user.role === "super_admin" ? "library_staff" : "super_admin"
-                            })
-                          }
-                        >
-                          Make {user.role === "super_admin" ? "Library Staff" : "Super Admin"}
-                        </button>
-                      ) : null}
-                      <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]">
-                        <input
-                          className="control text-xs"
-                          type="password"
-                          placeholder="New password"
-                          value={userPasswords[user.id] || ""}
-                          onChange={(event) => setUserPasswords({ ...userPasswords, [user.id]: event.target.value })}
-                        />
-                        <button
-                          type="button"
-                          className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple"
-                          onClick={() => resetUserPassword(user.id)}
-                        >
-                          Reset
-                        </button>
-                      </div>
+              <section className="panel overflow-hidden">
+                <div className="grid gap-0 border-b border-library-line md:grid-cols-4">
+                  <StatCard icon={<Database size={18} />} label="Courses" value={stats.courses} />
+                  <StatCard icon={<BookOpen size={18} />} label="Topics" value={stats.topics} />
+                  <StatCard icon={<Settings2 size={18} />} label="Pending Review" value={stats.pending} />
+                  <StatCard icon={<UsersRound size={18} />} label="Approved" value={stats.approved} />
+                </div>
+                <div className="grid gap-5 p-5 md:grid-cols-2 md:p-6">
+                  <div className="rounded-lg border border-library-line bg-white p-5">
+                    <p className="label">Next action</p>
+                    <h3 className="mt-2 text-lg font-extrabold">Upload or review courses</h3>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <a className="btn-primary" href="/upload-compact">
+                        <FileUp size={16} />
+                        Upload Compact
+                      </a>
+                      <a className="btn-secondary" href="/courses">
+                        <BookOpen size={16} />
+                        View Courses
+                      </a>
                     </div>
-                  ))}
+                  </div>
+                  <div className="rounded-lg border border-library-line bg-white p-5">
+                    <p className="label">Session</p>
+                    <h3 className="mt-2 text-lg font-extrabold">{roleLabel(session.user.role)}</h3>
+                    <p className="mt-2 text-sm leading-6 text-library-muted">{session.user.full_name}</p>
+                  </div>
                 </div>
-              </form>
-
-              <section className="panel p-4">
-                <p className="label">Sources</p>
-                <h2 className="mt-1 text-lg font-extrabold">Discovery Connectors</h2>
-                <div className="mt-3 space-y-2">
-                  {sources.map((source) => (
-                    <SourceToggle key={source.id} source={source} onSave={updateSource} />
-                  ))}
-                </div>
+              </section>
+              <section className="grid gap-5 lg:grid-cols-2">
+                <ActivityPanel activity={activity} />
+                <ExportPanel exports={exports} onDownload={downloadStoredExport} />
               </section>
             </>
           ) : null}
-        </aside>
 
-        <section className="space-y-5">
-          <section className="panel overflow-hidden">
-            <div className="border-b border-library-line bg-white px-5 py-5 md:px-6">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div>
-                  <p className="label">Explore Curated Collections</p>
-                  <h1 className="mt-2 text-3xl font-extrabold leading-tight text-library-ink md:text-4xl">
-                    {selectedCourse?.course_title || "Upload a course compact"}
-                  </h1>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-library-muted md:text-base">
-                    {selectedCourse
-                      ? `${selectedCourse.course_code} · ${selectedCourse.department || "Department pending"} · ${statusLabel(selectedCourse.status)}`
-                      : "Start by uploading a PDF course compact. The dashboard will extract topics, let you clean them up, then search for course resources."}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    className="btn-secondary"
-                    disabled={!selectedCourseId || isArchivedCourse || busy}
-                    onClick={confirmTopics}
-                    title={isArchivedCourse ? "Restore this course before confirming topics" : undefined}
-                  >
-                    {busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                    Confirm Topics
-                  </button>
-                  <button
-                    className="btn-primary"
-                    disabled={!selectedCourseId || !canGenerateResources || busy}
-                    onClick={generateResources}
-                    title={generateResourcesTitle}
-                  >
-                    {busy ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-                    Generate Resources
-                  </button>
-                  <button className="btn-secondary" disabled={!selectedCourseId || busy} onClick={archiveOrRestoreCourse}>
-                    {selectedCourse?.status === "archived" ? "Restore" : "Archive"}
-                  </button>
-                </div>
-              </div>
-            </div>
+          {activeView === "upload" ? (
+            <form onSubmit={handleUpload} className="panel p-6">
+              <p className="label">Upload Compact</p>
+              <label className="mt-4 flex min-h-[260px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-library-purple/35 bg-library-purple/5 px-4 py-10 text-center transition hover:border-library-purple">
+                <FileUp className="mb-3 text-library-purple" size={34} />
+                <span className="text-base font-extrabold text-library-ink">{selectedFile?.name || "Choose PDF"}</span>
+                <span className="mt-1 text-sm text-library-muted">Course compact only</span>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="sr-only"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                />
+              </label>
+              <button className="btn-primary mt-4" disabled={busy || !selectedFile}>
+                {busy ? <Loader2 className="animate-spin" size={16} /> : <FileUp size={16} />}
+                Upload & Extract
+              </button>
+            </form>
+          ) : null}
 
-            <div className="grid gap-0 border-b border-library-line md:grid-cols-4">
-              <StatCard icon={<Database size={18} />} label="Courses" value={stats.courses} />
-              <StatCard icon={<BookOpen size={18} />} label="Topics" value={stats.topics} />
-              <StatCard icon={<Settings2 size={18} />} label="Pending Review" value={stats.pending} />
-              <StatCard icon={<UsersRound size={18} />} label="Approved" value={stats.approved} />
-            </div>
-
-            <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-              <p className="rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted" aria-live="polite">
-                {busy ? <Loader2 className="mr-2 inline animate-spin text-library-purple" size={15} /> : null}
-                {message}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportJson} title={exportTitle}>
-                  <Download size={16} />
-                  JSON
+          {activeView === "users" && session.user.role === "super_admin" ? (
+            <section className="grid gap-5 lg:grid-cols-[420px_1fr]">
+              <form onSubmit={handleCreateUser} className="panel p-5">
+                <p className="label">Create User</p>
+                <h2 className="mt-1 text-xl font-extrabold">New account</h2>
+                <input className="control mt-4" placeholder="Full name" value={newUser.full_name} onChange={(event) => setNewUser({ ...newUser, full_name: event.target.value })} />
+                <input className="control mt-3" placeholder="Email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} />
+                <input className="control mt-3" placeholder="Password" type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} />
+                <select className="control mt-3" value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}>
+                  <option value="library_staff">Library Staff</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+                <button className="btn-gold mt-4 w-full" disabled={busy}>
+                  {busy ? <Loader2 className="animate-spin" size={16} /> : <UserPlus size={16} />}
+                  Create
                 </button>
-                <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportCsv} title={exportTitle}>
-                  <Download size={16} />
-                  CSV
-                </button>
-                <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportHtml} title={exportTitle}>
-                  <Download size={16} />
-                  HTML
-                </button>
-              </div>
-            </div>
-
-            {job ? (
-              <div className="mx-5 mb-5 rounded-xl border border-library-purple/15 bg-library-purple/5 p-4 md:mx-6">
-                <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                  <span className="inline-flex items-center gap-2 text-library-ink">
-                    <Loader2 className="animate-spin text-library-purple" size={16} />
-                    {job.message || job.job_type}
-                  </span>
-                  <span className="text-library-purple">{job.progress}%</span>
+              </form>
+              <div className="panel p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="label">Accounts</p>
+                    <h2 className="mt-1 text-xl font-extrabold">User Management</h2>
+                    <p className="mt-1 text-sm text-library-muted">{users.length} account{users.length === 1 ? "" : "s"} found</p>
+                  </div>
+                  <button className="btn-secondary" type="button" onClick={() => refreshUsers()} disabled={busy}>
+                    <RefreshCw size={16} />
+                    Refresh
+                  </button>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-                  <div className="h-full rounded-full bg-library-purple transition-all" style={{ width: `${job.progress}%` }} />
+                <div className="mt-4 grid gap-3">
+                  {users.map((user) => (
+                    <UserManagementRow
+                      key={user.id}
+                      user={user}
+                      currentUserId={session.user.id}
+                      password={userPasswords[user.id] || ""}
+                      onPasswordChange={(password) => setUserPasswords({ ...userPasswords, [user.id]: password })}
+                      onToggleActive={() => updateUser(user.id, { is_active: !user.is_active })}
+                      onToggleRole={() => updateUser(user.id, { role: user.role === "super_admin" ? "library_staff" : "super_admin" })}
+                      onResetPassword={() => resetUserPassword(user.id)}
+                    />
+                  ))}
+                  {users.length === 0 ? <EmptyLine icon={<UsersRound size={16} />} text="No users returned by the backend yet." /> : null}
                 </div>
-                {job.error_message ? <p className="mt-2 text-sm text-red-700">{job.error_message}</p> : null}
               </div>
-            ) : null}
+            </section>
+          ) : null}
 
-            {isArchivedCourse ? (
-              <div className="mx-5 mb-5 rounded-xl border border-library-gold/30 bg-library-gold/10 px-4 py-3 text-sm text-library-ink/75 md:mx-6">
-                <p className="font-bold text-library-ink">Archived course is read-only.</p>
-                <p className="mt-1">Restore it before editing topics, resources, metadata, or generating new exports.</p>
-              </div>
-            ) : null}
+          {activeView === "settings" ? (
+            <section className="grid gap-5 lg:grid-cols-[420px_1fr]">
+              <form onSubmit={changeOwnPassword} className="panel p-5">
+                <p className="label">Account</p>
+                <h2 className="mt-1 text-xl font-extrabold">Change Password</h2>
+                <input className="control mt-4" type="password" placeholder="Current password" value={accountPassword.current_password} onChange={(event) => setAccountPassword({ ...accountPassword, current_password: event.target.value })} required />
+                <input className="control mt-3" type="password" placeholder="New password" value={accountPassword.new_password} onChange={(event) => setAccountPassword({ ...accountPassword, new_password: event.target.value })} required />
+                <input className="control mt-3" type="password" placeholder="Confirm new password" value={accountPassword.confirm_password} onChange={(event) => setAccountPassword({ ...accountPassword, confirm_password: event.target.value })} required />
+                <button className="btn-secondary mt-4 w-full" disabled={busy}>
+                  {busy ? <Loader2 className="animate-spin" size={16} /> : <KeyRound size={16} />}
+                  Change Password
+                </button>
+              </form>
+              {session.user.role === "super_admin" ? (
+                <section className="panel p-5">
+                  <p className="label">Sources</p>
+                  <h2 className="mt-1 text-xl font-extrabold">Discovery Connectors</h2>
+                  <div className="mt-4 grid gap-3">
+                    {sources.map((source) => (
+                      <SourceToggle key={source.id} source={source} onSave={updateSource} />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </section>
+          ) : null}
 
-            <div className="px-5 pb-5 md:px-6">
-              {selectedCourse ? <CourseMetadataEditor course={selectedCourse} onSave={updateCourse} readOnly={isArchivedCourse} /> : <WelcomeEmptyState />}
-            </div>
-          </section>
+          {activeView === "reports" ? (
+            <section className="grid gap-5 lg:grid-cols-2">
+              {evaluation ? <EvaluationPanel evaluation={evaluation} /> : null}
+              <ActivityPanel activity={activity} />
+              <ExportPanel exports={exports} onDownload={downloadStoredExport} />
+            </section>
+          ) : null}
+
+          {activeView === "courses" ? (
+            <>
+              <section className="panel p-5 md:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="label">Course Compacts</p>
+                    <h2 className="mt-1 text-2xl font-extrabold text-library-ink">Uploaded courses</h2>
+                    <p className="mt-2 text-sm leading-6 text-library-muted">{courses.length} course{courses.length === 1 ? "" : "s"} available</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-secondary" onClick={() => refreshCourses()} title="Refresh courses" aria-label="Refresh courses">
+                      <RefreshCw className={busy ? "animate-spin" : undefined} size={16} />
+                      Refresh
+                    </button>
+                    <a className="btn-primary" href="/upload-compact">
+                      <FileUp size={16} />
+                      Upload Compact
+                    </a>
+                  </div>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {courses.map((course) => (
+                    <button
+                      key={course.id}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        selectedCourseId === course.id
+                          ? "border-library-purple bg-library-purple/10 shadow-soft"
+                          : "border-library-line bg-white hover:border-library-purple/30 hover:bg-library-paper"
+                      }`}
+                      onClick={() => loadCourse(course.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-extrabold text-library-ink">{course.course_code}</p>
+                          <p className="mt-1 line-clamp-2 text-sm text-library-muted">{course.course_title}</p>
+                        </div>
+                        <FolderOpen className="mt-0.5 shrink-0 text-library-purple" size={16} />
+                      </div>
+                      <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-library-purple">{statusLabel(course.status)}</p>
+                    </button>
+                  ))}
+                  {courses.length === 0 ? <EmptyLine icon={<FolderOpen size={16} />} text="No compacts uploaded yet." /> : null}
+                </div>
+              </section>
+
+              {selectedCourse ? (
+                <section className="panel overflow-hidden">
+                  <div className="border-b border-library-line bg-white px-5 py-5 md:px-6">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                      <div>
+                        <p className="label">Selected Course</p>
+                        <h2 className="mt-2 text-2xl font-extrabold leading-tight text-library-ink md:text-3xl">{selectedCourse.course_title}</h2>
+                        <p className="mt-2 max-w-3xl text-sm leading-6 text-library-muted">
+                          {selectedCourse.course_code} · {selectedCourse.department || "Department pending"} · {statusLabel(selectedCourse.status)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="btn-secondary"
+                          disabled={!selectedCourseId || isArchivedCourse || busy}
+                          onClick={confirmTopics}
+                          title={isArchivedCourse ? "Restore this course before confirming topics" : undefined}
+                        >
+                          {busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                          Confirm Topics
+                        </button>
+                        <button className="btn-primary" disabled={!selectedCourseId || !canGenerateResources || busy} onClick={generateResources} title={generateResourcesTitle}>
+                          {busy ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                          Generate Resources
+                        </button>
+                        <button className="btn-secondary" disabled={!selectedCourseId || busy} onClick={archiveOrRestoreCourse}>
+                          {selectedCourse.status === "archived" ? "Restore" : "Archive"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-0 border-b border-library-line md:grid-cols-4">
+                    <StatCard icon={<Database size={18} />} label="Courses" value={stats.courses} />
+                    <StatCard icon={<BookOpen size={18} />} label="Topics" value={stats.topics} />
+                    <StatCard icon={<Settings2 size={18} />} label="Pending Review" value={stats.pending} />
+                    <StatCard icon={<UsersRound size={18} />} label="Approved" value={stats.approved} />
+                  </div>
+
+                  <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+                    <p className="rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted" aria-live="polite">
+                      {busy ? <Loader2 className="mr-2 inline animate-spin text-library-purple" size={15} /> : null}
+                      {message}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportJson} title={exportTitle}>
+                        <Download size={16} />
+                        JSON
+                      </button>
+                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportCsv} title={exportTitle}>
+                        <Download size={16} />
+                        CSV
+                      </button>
+                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportHtml} title={exportTitle}>
+                        <Download size={16} />
+                        HTML
+                      </button>
+                    </div>
+                  </div>
+
+                  {job ? (
+                    <div className="mx-5 mb-5 rounded-xl border border-library-purple/15 bg-library-purple/5 p-4 md:mx-6">
+                      <div className="flex items-center justify-between gap-3 text-sm font-bold">
+                        <span className="inline-flex items-center gap-2 text-library-ink">
+                          <Loader2 className="animate-spin text-library-purple" size={16} />
+                          {job.message || job.job_type}
+                        </span>
+                        <span className="text-library-purple">{job.progress}%</span>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                        <div className="h-full rounded-full bg-library-purple transition-all" style={{ width: `${job.progress}%` }} />
+                      </div>
+                      {job.error_message ? <p className="mt-2 text-sm text-red-700">{job.error_message}</p> : null}
+                    </div>
+                  ) : null}
+
+                  {isArchivedCourse ? (
+                    <div className="mx-5 mb-5 rounded-xl border border-library-gold/30 bg-library-gold/10 px-4 py-3 text-sm text-library-ink/75 md:mx-6">
+                      <p className="font-bold text-library-ink">Archived course is read-only.</p>
+                      <p className="mt-1">Restore it before editing topics, resources, metadata, or generating new exports.</p>
+                    </div>
+                  ) : null}
+
+                  <div className="px-5 pb-5 md:px-6">
+                    <CourseMetadataEditor course={selectedCourse} onSave={updateCourse} readOnly={isArchivedCourse} />
+                  </div>
+                </section>
+              ) : null}
 
           {detail ? (
             <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
@@ -1475,66 +1514,10 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                  {evaluation ? (
-                    <div className="panel p-5 md:col-span-2 xl:col-span-1">
-                      <p className="label">Evaluation</p>
-                      <h3 className="text-xl font-bold">Prototype Metrics</h3>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <Metric label="Avg. job time" value={`${evaluation.summary.average_completed_job_seconds}s`} />
-                        <Metric label="Extraction confidence" value={`${Math.round(evaluation.summary.average_extraction_confidence * 100)}%`} />
-                        <Metric label="Candidates / topic" value={evaluation.summary.average_candidates_per_searchable_topic.toString()} />
-                        <Metric label="Approval rate" value={`${Math.round(evaluation.summary.approval_rate * 100)}%`} />
-                      </div>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <Breakdown title="Sources" rows={evaluation.source_breakdown} />
-                        <Breakdown title="Categories" rows={evaluation.category_breakdown} />
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="panel p-5">
-                    <p className="label">Activity Log</p>
-                    <h3 className="text-xl font-bold">Recent Actions</h3>
-                    <div className="mt-4 space-y-2">
-                      {activity.slice(0, 8).map((item) => (
-                        <div key={item.id} className="rounded-xl border border-library-line bg-library-paper p-3 text-sm">
-                          <p className="font-semibold">{item.action.replaceAll("_", " ")}</p>
-                          <p className="mt-1 text-library-muted">
-                            {item.actor} · {new Date(item.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      ))}
-                      {activity.length === 0 ? <p className="text-sm text-library-muted">No activity recorded yet.</p> : null}
-                    </div>
-                  </div>
-
-                  <div className="panel p-5">
-                    <p className="label">Export History</p>
-                    <h3 className="text-xl font-bold">Generated Files</h3>
-                    <div className="mt-4 space-y-2">
-                      {exports.slice(0, 8).map((item) => (
-                        <div key={item.id} className="rounded-xl border border-library-line bg-library-paper p-3 text-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold">{item.export_type.toUpperCase()} export</p>
-                              <p className="mt-1 text-library-muted">
-                                {item.course} · {item.created_by}
-                              </p>
-                            </div>
-                            <button className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple" onClick={() => downloadStoredExport(item)}>
-                              Download
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {exports.length === 0 ? <p className="text-sm text-library-muted">No exports generated yet.</p> : null}
-                    </div>
-                  </div>
-                </div>
               </div>
             </section>
+          ) : null}
+            </>
           ) : null}
         </section>
       </div>
@@ -1542,41 +1525,174 @@ export default function Home() {
   );
 }
 
+function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <section className="rounded-lg border border-library-line bg-white px-5 py-5 shadow-soft md:px-6">
+      <p className="label">{eyebrow}</p>
+      <h1 className="mt-2 text-3xl font-extrabold leading-tight text-library-ink md:text-4xl">{title}</h1>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-library-muted md:text-base">{description}</p>
+    </section>
+  );
+}
+
+function ActivityPanel({ activity }: { activity: ActivityLog[] }) {
+  return (
+    <div className="panel p-5">
+      <p className="label">Activity Log</p>
+      <h3 className="text-xl font-bold">Recent Actions</h3>
+      <div className="mt-4 space-y-2">
+        {activity.slice(0, 8).map((item) => (
+          <div key={item.id} className="rounded-xl border border-library-line bg-library-paper p-3 text-sm">
+            <p className="font-semibold">{item.action.replaceAll("_", " ")}</p>
+            <p className="mt-1 text-library-muted">
+              {item.actor} · {new Date(item.created_at).toLocaleString()}
+            </p>
+          </div>
+        ))}
+        {activity.length === 0 ? <p className="text-sm text-library-muted">No activity recorded yet.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function ExportPanel({
+  exports,
+  onDownload
+}: {
+  exports: ExportHistory[];
+  onDownload: (item: ExportHistory) => Promise<void>;
+}) {
+  return (
+    <div className="panel p-5">
+      <p className="label">Export History</p>
+      <h3 className="text-xl font-bold">Generated Files</h3>
+      <div className="mt-4 space-y-2">
+        {exports.slice(0, 8).map((item) => (
+          <div key={item.id} className="rounded-xl border border-library-line bg-library-paper p-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{item.export_type.toUpperCase()} export</p>
+                <p className="mt-1 text-library-muted">
+                  {item.course} · {item.created_by}
+                </p>
+              </div>
+              <button className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple" onClick={() => onDownload(item)}>
+                Download
+              </button>
+            </div>
+          </div>
+        ))}
+        {exports.length === 0 ? <p className="text-sm text-library-muted">No exports generated yet.</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function EvaluationPanel({ evaluation }: { evaluation: EvaluationReport }) {
+  return (
+    <div className="panel p-5 lg:col-span-2">
+      <p className="label">Evaluation</p>
+      <h3 className="text-xl font-bold">Prototype Metrics</h3>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Avg. job time" value={`${evaluation.summary.average_completed_job_seconds}s`} />
+        <Metric label="Extraction confidence" value={`${Math.round(evaluation.summary.average_extraction_confidence * 100)}%`} />
+        <Metric label="Candidates / topic" value={evaluation.summary.average_candidates_per_searchable_topic.toString()} />
+        <Metric label="Approval rate" value={`${Math.round(evaluation.summary.approval_rate * 100)}%`} />
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <Breakdown title="Sources" rows={evaluation.source_breakdown} />
+        <Breakdown title="Categories" rows={evaluation.category_breakdown} />
+      </div>
+    </div>
+  );
+}
+
+function UserManagementRow({
+  user,
+  currentUserId,
+  password,
+  onPasswordChange,
+  onToggleActive,
+  onToggleRole,
+  onResetPassword
+}: {
+  user: User;
+  currentUserId: number;
+  password: string;
+  onPasswordChange: (password: string) => void;
+  onToggleActive: () => void;
+  onToggleRole: () => void;
+  onResetPassword: () => void;
+}) {
+  const isCurrentUser = user.id === currentUserId;
+
+  return (
+    <div className="rounded-lg border border-library-line bg-library-paper p-4 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-extrabold text-library-ink">{user.full_name}</p>
+          <p className="mt-1 text-library-muted">
+            {roleLabel(user.role)} · {user.is_active ? "Active" : "Inactive"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isCurrentUser}
+            onClick={onToggleActive}
+            title={isCurrentUser ? "You cannot disable your own account" : undefined}
+          >
+            {isCurrentUser ? "Current" : user.is_active ? "Disable" : "Enable"}
+          </button>
+          {!isCurrentUser ? (
+            <button type="button" className="rounded-md border border-library-line bg-white px-2 py-1 font-bold text-library-purple" onClick={onToggleRole}>
+              Make {user.role === "super_admin" ? "Library Staff" : "Super Admin"}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+        <input className="control text-xs" type="password" placeholder="New password" value={password} onChange={(event) => onPasswordChange(event.target.value)} />
+        <button type="button" className="rounded-md border border-library-line bg-white px-3 py-2 font-bold text-library-purple" onClick={onResetPassword}>
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BrandLogo({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-library-line bg-white shadow-soft">
-        <Library className="text-library-purple" size={compact ? 22 : 24} />
-      </div>
-      <div className="min-w-0">
-        <p className={`${compact ? "text-xl" : "text-3xl"} font-extrabold leading-none tracking-normal text-library-ink`}>COVENANT</p>
-        <p className="mt-1 text-[0.7rem] font-extrabold uppercase tracking-[0.08em] text-library-purple">
-          Centre for Learning Resources
-        </p>
-      </div>
+    <div className="flex items-center">
+      <img
+        src="/covenant-clr-logo.png"
+        alt="Covenant Centre for Learning Resources"
+        className={compact ? "h-auto w-[230px] max-w-full" : "h-auto w-[320px] max-w-full"}
+      />
     </div>
   );
 }
 
 function LoadingShell() {
   return (
-    <main className="min-h-screen bg-library-paper">
-      <header className="border-b border-library-line bg-white">
-        <div className="mx-auto flex max-w-[1500px] items-center justify-between px-4 py-4 md:px-6">
+    <main className="min-h-screen bg-library-paper lg:grid lg:grid-cols-[304px_minmax(0,1fr)]">
+      <aside className="border-b border-library-line bg-white px-4 py-5 shadow-soft lg:h-screen lg:border-b-0 lg:border-r lg:px-5">
+        <div className="space-y-5">
           <BrandLogo compact />
-          <div className="hidden h-10 w-44 rounded-full bg-library-paper md:block" />
-        </div>
-      </header>
-      <div className="mx-auto grid max-w-[1500px] gap-5 px-4 py-5 md:px-6 lg:grid-cols-[320px_1fr]">
-        <aside className="space-y-4">
-          <div className="panel p-4">
+          <div className="space-y-2">
+            <div className="skeleton h-10" />
+            <div className="skeleton h-10" />
+            <div className="skeleton h-10" />
+          </div>
+          <div className="panel-flat p-4">
             <div className="skeleton h-12 w-3/4" />
             <div className="mt-4 grid grid-cols-2 gap-2">
               <div className="skeleton h-16" />
               <div className="skeleton h-16" />
             </div>
           </div>
-          <div className="panel p-4">
+          <div className="panel-flat p-4">
             <div className="skeleton h-8 w-32" />
             <div className="mt-4 space-y-3">
               <div className="skeleton h-20" />
@@ -1584,7 +1700,9 @@ function LoadingShell() {
               <div className="skeleton h-20" />
             </div>
           </div>
-        </aside>
+        </div>
+      </aside>
+      <div className="min-w-0 px-4 py-5 md:px-6 lg:px-8">
         <section className="panel overflow-hidden">
           <div className="border-b border-library-line px-5 py-6 md:px-6">
             <div className="skeleton h-5 w-48" />
