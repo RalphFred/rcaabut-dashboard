@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   BarChart3,
   BookOpen,
   Check,
+  ChevronDown,
   Database,
   Edit3,
   Download,
@@ -19,6 +23,7 @@ import {
   Search,
   Settings2,
   Shield,
+  Trash2,
   UserPlus,
   UsersRound,
   X
@@ -51,11 +56,10 @@ const sessionStorageKey = "rcaabut-dashboard-session";
 
 const sidebarRoutes = [
   { label: "Dashboard", href: "/dashboard", view: "dashboard", icon: PanelLeft },
-  { label: "User Management", href: "/user-management", view: "users", icon: UsersRound, superAdminOnly: true },
   { label: "Courses", href: "/courses", view: "courses", icon: BookOpen },
-  { label: "Upload Compact", href: "/upload-compact", view: "upload", icon: FileUp },
   { label: "Reports", href: "/reports", view: "reports", icon: BarChart3 },
-  { label: "Settings", href: "/settings", view: "settings", icon: Settings2 }
+  { label: "Settings", href: "/settings", view: "settings", icon: Settings2 },
+  { label: "User Management", href: "/user-management", view: "users", icon: UsersRound, superAdminOnly: true }
 ];
 
 type DashboardView = "dashboard" | "users" | "courses" | "upload" | "reports" | "settings";
@@ -103,7 +107,7 @@ function pathToView(pathname: string, role?: Role): DashboardView {
     "/reports": "reports",
     "/settings": "settings"
   };
-  const value = pathMap[pathname] || "dashboard";
+  const value = pathname.startsWith("/courses/") ? "courses" : pathMap[pathname] || "dashboard";
   if (value === "users" && role !== "super_admin") {
     return "dashboard";
   }
@@ -172,11 +176,14 @@ export default function Home() {
   const [message, setMessage] = useState("Sign in with the seeded Super Admin account to begin.");
   const [booting, setBooting] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [activeView, setActiveView] = useState<DashboardView>("dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [userPasswords, setUserPasswords] = useState<Record<number, string>>({});
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [coursePendingDelete, setCoursePendingDelete] = useState<Course | null>(null);
   const [detail, setDetail] = useState<CourseDetail | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -212,12 +219,17 @@ export default function Home() {
   });
 
   const token = session?.access_token;
+  const routeCourseId = useMemo(() => {
+    const match = (pathname || "").match(/^\/courses\/(\d+)$/);
+    return match ? Number(match[1]) : null;
+  }, [pathname]);
   const selectedCourse = useMemo(
     () => (detail?.course.id === selectedCourseId ? detail.course : null),
     [detail?.course, selectedCourseId]
   );
   const searchableTopics = useMemo(() => detail?.topics.filter((topic) => topic.is_searchable) || [], [detail?.topics]);
   const hasSearchableTopics = searchableTopics.length > 0;
+  const activeView = useMemo(() => pathToView(pathname || "/", session?.user.role), [pathname, session?.user.role]);
   const hasConfirmedTopics = selectedCourse
     ? ["topics_reviewed", "resources_generated", "exported"].includes(selectedCourse.status)
     : false;
@@ -248,16 +260,6 @@ export default function Home() {
       approved
     };
   }, [courses.length, detail]);
-
-  useEffect(() => {
-    function syncView() {
-      setActiveView(pathToView(window.location.pathname, session?.user.role));
-    }
-
-    syncView();
-    window.addEventListener("popstate", syncView);
-    return () => window.removeEventListener("popstate", syncView);
-  }, [session?.user.role]);
 
   const currentView = session ? viewTitles[activeView] : null;
 
@@ -356,10 +358,7 @@ export default function Home() {
         setExports(exportsPayload.exports);
         setEvaluation(evaluationPayload);
         setSources(sourcesPayload.sources);
-        let courseLoaded = true;
-        if (coursePayload.courses[0]) {
-          courseLoaded = await loadCourse(coursePayload.courses[0].id, parsed.access_token);
-        }
+        const courseLoaded = true;
         if (parsed.user.role === "super_admin") {
           const userPayload = await apiRequest<{ users: User[] }>("/users", {}, parsed.access_token);
           if (!cancelled) {
@@ -367,9 +366,7 @@ export default function Home() {
           }
         }
         if (!cancelled && courseLoaded) {
-          setMessage(`Welcome back, ${parsed.user.full_name}.`);
-        } else if (!cancelled) {
-          setMessage(`Welcome back, ${parsed.user.full_name}. Select a course from the refreshed list or upload a new compact.`);
+          setMessage(`Welcome back, ${parsed.user.full_name}. Choose a course to open its workspace.`);
         }
       } catch {
         window.localStorage.removeItem(sessionStorageKey);
@@ -419,6 +416,21 @@ export default function Home() {
     [refreshCourses, token]
   );
 
+  useEffect(() => {
+    if (!token || activeView !== "courses") {
+      return;
+    }
+    if (routeCourseId && routeCourseId !== selectedCourseId) {
+      loadCourse(routeCourseId).catch((error) => setMessage(error instanceof Error ? error.message : "Could not load course."));
+      return;
+    }
+    if (!routeCourseId && selectedCourseId) {
+      setSelectedCourseId(null);
+      setDetail(null);
+    }
+  }, [activeView, loadCourse, routeCourseId, selectedCourseId, token]);
+
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -432,10 +444,7 @@ export default function Home() {
       setMessage(`Welcome, ${payload.user.full_name}.`);
       const coursePayload = await apiRequest<{ courses: Course[] }>("/courses", {}, payload.access_token);
       setCourses(coursePayload.courses);
-      let courseLoaded = true;
-      if (coursePayload.courses[0]) {
-        courseLoaded = await loadCourse(coursePayload.courses[0].id, payload.access_token);
-      }
+      const courseLoaded = true;
       if (payload.user.role === "super_admin") {
         const userPayload = await apiRequest<{ users: User[] }>("/users", {}, payload.access_token);
         setUsers(userPayload.users);
@@ -450,8 +459,8 @@ export default function Home() {
       setExports(exportsPayload.exports);
       setEvaluation(evaluationPayload);
       setSources(sourcesPayload.sources);
-      if (!courseLoaded) {
-        setMessage("Signed in. Select a course from the refreshed list or upload a new compact.");
+      if (courseLoaded) {
+        setMessage("Signed in. Select a course to open its workspace or upload a new compact.");
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Login failed.");
@@ -477,6 +486,7 @@ export default function Home() {
     const finalJob = await apiRequest<Job>(`/jobs/${jobId}`, {}, token);
     if (finalJob.course_id) {
       await loadCourse(finalJob.course_id);
+      router.push(`/courses/${finalJob.course_id}`);
     }
     await refreshReports();
   }
@@ -498,6 +508,8 @@ export default function Home() {
       );
       setMessage("Compact uploaded. Extracting course topics now.");
       await pollJob(payload.job_id);
+      setSelectedFile(null);
+      setUploadModalOpen(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -745,6 +757,26 @@ export default function Home() {
       await refreshReports();
       setMessage("Course metadata updated.");
     }, "Course metadata update failed.");
+  }
+
+
+  async function deleteCourse() {
+    if (!token || !coursePendingDelete) {
+      return;
+    }
+    const courseId = coursePendingDelete.id;
+    await runDashboardAction(async () => {
+      await apiRequest(`/courses/${courseId}`, { method: "DELETE" }, token);
+      setCoursePendingDelete(null);
+      if (selectedCourseId === courseId) {
+        setSelectedCourseId(null);
+        setDetail(null);
+        router.push("/courses");
+      }
+      await refreshCourses();
+      await refreshReports();
+      setMessage("Course deleted.");
+    }, "Course delete failed.", { showBusy: true });
   }
 
   async function archiveOrRestoreCourse() {
@@ -1038,7 +1070,7 @@ export default function Home() {
               const Icon = route.icon;
               const isActive = activeView === route.view;
               return (
-                <a
+                <Link
                   key={route.href}
                   href={route.href}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition ${
@@ -1049,7 +1081,7 @@ export default function Home() {
                 >
                   <Icon size={17} />
                   <span>{route.label}</span>
-                </a>
+                </Link>
               );
             })}
           </nav>
@@ -1079,14 +1111,14 @@ export default function Home() {
                     <p className="label">Next action</p>
                     <h3 className="mt-2 text-lg font-extrabold">Upload or review courses</h3>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <a className="btn-primary" href="/upload-compact">
-                        <FileUp size={16} />
-                        Upload Compact
-                      </a>
-                      <a className="btn-secondary" href="/courses">
+                      <Link className="btn-primary" href="/courses">
                         <BookOpen size={16} />
-                        View Courses
-                      </a>
+                        Course Library
+                      </Link>
+                      <Link className="btn-secondary" href="/reports">
+                        <BarChart3 size={16} />
+                        View Reports
+                      </Link>
                     </div>
                   </div>
                   <div className="rounded-lg border border-library-line bg-white p-5">
@@ -1132,10 +1164,15 @@ export default function Home() {
                 <input className="control mt-4" placeholder="Full name" value={newUser.full_name} onChange={(event) => setNewUser({ ...newUser, full_name: event.target.value })} />
                 <input className="control mt-3" placeholder="Email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} />
                 <input className="control mt-3" placeholder="Password" type="password" value={newUser.password} onChange={(event) => setNewUser({ ...newUser, password: event.target.value })} />
-                <select className="control mt-3" value={newUser.role} onChange={(event) => setNewUser({ ...newUser, role: event.target.value })}>
-                  <option value="library_staff">Library Staff</option>
-                  <option value="super_admin">Super Admin</option>
-                </select>
+                <ShadcnSelect
+                  className="mt-3"
+                  value={newUser.role}
+                  options={[
+                    { value: "library_staff", label: "Library Staff" },
+                    { value: "super_admin", label: "Super Admin" }
+                  ]}
+                  onChange={(role) => setNewUser({ ...newUser, role })}
+                />
                 <button className="btn-gold mt-4 w-full" disabled={busy}>
                   {busy ? <Loader2 className="animate-spin" size={16} /> : <UserPlus size={16} />}
                   Create
@@ -1214,309 +1251,243 @@ export default function Home() {
                   <div>
                     <p className="label">Course Compacts</p>
                     <h2 className="mt-1 text-2xl font-extrabold text-library-ink">Uploaded courses</h2>
-                    <p className="mt-2 text-sm leading-6 text-library-muted">{courses.length} course{courses.length === 1 ? "" : "s"} available</p>
+                    <p className="mt-2 text-sm leading-6 text-library-muted">
+                      {routeCourseId ? "You are inside a course workspace." : `${courses.length} course${courses.length === 1 ? "" : "s"} available. Open one to review topics and resources.`}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button className="btn-secondary" onClick={() => refreshCourses()} title="Refresh courses" aria-label="Refresh courses">
                       <RefreshCw className={busy ? "animate-spin" : undefined} size={16} />
                       Refresh
                     </button>
-                    <a className="btn-primary" href="/upload-compact">
+                    <button className="btn-primary" type="button" onClick={() => setUploadModalOpen(true)}>
                       <FileUp size={16} />
                       Upload Compact
-                    </a>
+                    </button>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {courses.map((course) => (
-                    <button
-                      key={course.id}
-                      className={`rounded-lg border p-4 text-left transition ${
-                        selectedCourseId === course.id
-                          ? "border-library-purple bg-library-purple/10 shadow-soft"
-                          : "border-library-line bg-white hover:border-library-purple/30 hover:bg-library-paper"
-                      }`}
-                      onClick={() => loadCourse(course.id)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-extrabold text-library-ink">{course.course_code}</p>
-                          <p className="mt-1 line-clamp-2 text-sm text-library-muted">{course.course_title}</p>
+
+                {!routeCourseId ? (
+                  <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {courses.map((course) => (
+                      <Link
+                        key={course.id}
+                        className="group rounded-lg border border-library-line bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-library-purple/40 hover:bg-library-purple/5 hover:shadow-soft"
+                        href={`/courses/${course.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-extrabold text-library-ink">{course.course_code}</p>
+                            <p className="mt-1 line-clamp-2 text-sm text-library-muted">{course.course_title}</p>
+                          </div>
+                          <FolderOpen className="mt-0.5 shrink-0 text-library-purple transition group-hover:scale-110" size={16} />
                         </div>
-                        <FolderOpen className="mt-0.5 shrink-0 text-library-purple" size={16} />
-                      </div>
-                      <p className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-library-purple">{statusLabel(course.status)}</p>
-                    </button>
-                  ))}
-                  {courses.length === 0 ? <EmptyLine icon={<FolderOpen size={16} />} text="No compacts uploaded yet." /> : null}
-                </div>
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-library-purple">{statusLabel(course.status)}</p>
+                          <span className="text-xs font-extrabold text-library-muted group-hover:text-library-purple">Open workspace</span>
+                        </div>
+                      </Link>
+                    ))}
+                    {courses.length === 0 ? <EmptyLine icon={<FolderOpen size={16} />} text="No compacts uploaded yet." /> : null}
+                  </div>
+                ) : null}
               </section>
 
-              {selectedCourse ? (
-                <section className="panel overflow-hidden">
-                  <div className="border-b border-library-line bg-white px-5 py-5 md:px-6">
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                      <div>
-                        <p className="label">Selected Course</p>
-                        <h2 className="mt-2 text-2xl font-extrabold leading-tight text-library-ink md:text-3xl">{selectedCourse.course_title}</h2>
-                        <p className="mt-2 max-w-3xl text-sm leading-6 text-library-muted">
-                          {selectedCourse.course_code} · {selectedCourse.department || "Department pending"} · {statusLabel(selectedCourse.status)}
-                        </p>
+              {selectedCourse && detail ? (
+                <section className="space-y-5">
+                  <div className="panel overflow-hidden">
+                    <div className="relative border-b border-library-line bg-white px-5 py-5 md:px-6">
+                      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-library-purple via-library-gold to-library-purple/30" />
+                      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                        <div>
+                          <p className="label">Course Workspace</p>
+                          <h2 className="mt-2 text-2xl font-extrabold leading-tight text-library-ink md:text-3xl">{selectedCourse.course_title}</h2>
+                          <p className="mt-2 max-w-3xl text-sm leading-6 text-library-muted">
+                            {selectedCourse.course_code} · {selectedCourse.department || "Department pending"} · {statusLabel(selectedCourse.status)}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || busy} onClick={confirmTopics}>
+                            {busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                            Confirm Topics
+                          </button>
+                          <button className="btn-primary" disabled={!selectedCourseId || !canGenerateResources || busy} onClick={generateResources} title={generateResourcesTitle}>
+                            {busy ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                            Generate Resources
+                          </button>
+                          <button className="btn-secondary" disabled={!selectedCourseId || busy} onClick={archiveOrRestoreCourse}>
+                            {selectedCourse.status === "archived" ? "Restore" : "Archive"}
+                          </button>
+                          <button className="btn-secondary border-red-200 text-red-700 hover:border-red-300 hover:text-red-800" disabled={busy} onClick={() => setCoursePendingDelete(selectedCourse)}>
+                            <Trash2 size={16} />
+                            Delete
+                          </button>
+                        </div>
                       </div>
+                    </div>
+
+                    <div className="grid gap-0 border-b border-library-line md:grid-cols-4">
+                      <StatCard icon={<Database size={18} />} label="Courses" value={stats.courses} />
+                      <StatCard icon={<BookOpen size={18} />} label="Topics" value={stats.topics} />
+                      <StatCard icon={<Settings2 size={18} />} label="Pending Review" value={stats.pending} />
+                      <StatCard icon={<UsersRound size={18} />} label="Approved" value={stats.approved} />
+                    </div>
+
+                    <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+                      <p className="rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted" aria-live="polite">
+                        {busy ? <Loader2 className="mr-2 inline animate-spin text-library-purple" size={15} /> : null}
+                        {message}
+                      </p>
                       <div className="flex flex-wrap gap-2">
-                        <button
-                          className="btn-secondary"
-                          disabled={!selectedCourseId || isArchivedCourse || busy}
-                          onClick={confirmTopics}
-                          title={isArchivedCourse ? "Restore this course before confirming topics" : undefined}
-                        >
-                          {busy ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
-                          Confirm Topics
+                        <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportJson} title={exportTitle}>
+                          <Download size={16} />
+                          JSON
                         </button>
-                        <button className="btn-primary" disabled={!selectedCourseId || !canGenerateResources || busy} onClick={generateResources} title={generateResourcesTitle}>
-                          {busy ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-                          Generate Resources
+                        <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportCsv} title={exportTitle}>
+                          <Download size={16} />
+                          CSV
                         </button>
-                        <button className="btn-secondary" disabled={!selectedCourseId || busy} onClick={archiveOrRestoreCourse}>
-                          {selectedCourse.status === "archived" ? "Restore" : "Archive"}
+                        <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportHtml} title={exportTitle}>
+                          <Download size={16} />
+                          HTML
                         </button>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="grid gap-0 border-b border-library-line md:grid-cols-4">
-                    <StatCard icon={<Database size={18} />} label="Courses" value={stats.courses} />
-                    <StatCard icon={<BookOpen size={18} />} label="Topics" value={stats.topics} />
-                    <StatCard icon={<Settings2 size={18} />} label="Pending Review" value={stats.pending} />
-                    <StatCard icon={<UsersRound size={18} />} label="Approved" value={stats.approved} />
-                  </div>
-
-                  <div className="flex flex-col gap-3 px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-                    <p className="rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted" aria-live="polite">
-                      {busy ? <Loader2 className="mr-2 inline animate-spin text-library-purple" size={15} /> : null}
-                      {message}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportJson} title={exportTitle}>
-                        <Download size={16} />
-                        JSON
-                      </button>
-                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportCsv} title={exportTitle}>
-                        <Download size={16} />
-                        CSV
-                      </button>
-                      <button className="btn-secondary" disabled={!selectedCourseId || isArchivedCourse || !hasApprovedResources || busy} onClick={exportHtml} title={exportTitle}>
-                        <Download size={16} />
-                        HTML
-                      </button>
-                    </div>
-                  </div>
-
-                  {job ? (
-                    <div className="mx-5 mb-5 rounded-xl border border-library-purple/15 bg-library-purple/5 p-4 md:mx-6">
-                      <div className="flex items-center justify-between gap-3 text-sm font-bold">
-                        <span className="inline-flex items-center gap-2 text-library-ink">
-                          <Loader2 className="animate-spin text-library-purple" size={16} />
-                          {job.message || job.job_type}
-                        </span>
-                        <span className="text-library-purple">{job.progress}%</span>
+                    {job ? (
+                      <div className="mx-5 mb-5 rounded-xl border border-library-purple/15 bg-library-purple/5 p-4 md:mx-6">
+                        <div className="flex items-center justify-between gap-3 text-sm font-bold">
+                          <span className="inline-flex items-center gap-2 text-library-ink">
+                            <Loader2 className="animate-spin text-library-purple" size={16} />
+                            {job.message || job.job_type}
+                          </span>
+                          <span className="text-library-purple">{job.progress}%</span>
+                        </div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                          <div className="h-full rounded-full bg-library-purple transition-all" style={{ width: `${job.progress}%` }} />
+                        </div>
+                        {job.error_message ? <p className="mt-2 text-sm text-red-700">{job.error_message}</p> : null}
                       </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
-                        <div className="h-full rounded-full bg-library-purple transition-all" style={{ width: `${job.progress}%` }} />
+                    ) : null}
+
+                    {isArchivedCourse ? (
+                      <div className="mx-5 mb-5 rounded-xl border border-library-gold/30 bg-library-gold/10 px-4 py-3 text-sm text-library-ink/75 md:mx-6">
+                        <p className="font-bold text-library-ink">Archived course is read-only.</p>
+                        <p className="mt-1">Restore it before editing topics, resources, metadata, or generating new exports.</p>
                       </div>
-                      {job.error_message ? <p className="mt-2 text-sm text-red-700">{job.error_message}</p> : null}
-                    </div>
-                  ) : null}
-
-                  {isArchivedCourse ? (
-                    <div className="mx-5 mb-5 rounded-xl border border-library-gold/30 bg-library-gold/10 px-4 py-3 text-sm text-library-ink/75 md:mx-6">
-                      <p className="font-bold text-library-ink">Archived course is read-only.</p>
-                      <p className="mt-1">Restore it before editing topics, resources, metadata, or generating new exports.</p>
-                    </div>
-                  ) : null}
-
-                  <div className="px-5 pb-5 md:px-6">
-                    <CourseMetadataEditor course={selectedCourse} onSave={updateCourse} readOnly={isArchivedCourse} />
+                    ) : null}
                   </div>
+
+                  <section className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+                    <aside className="space-y-4 xl:sticky xl:top-5 xl:self-start">
+                      <div className="panel p-5">
+                        <p className="label">Flow</p>
+                        <h3 className="text-xl font-bold">Review without the scroll hunt</h3>
+                        <ol className="mt-4 space-y-2 text-sm text-library-muted">
+                          <li className="rounded-lg bg-library-paper px-3 py-2"><strong className="text-library-ink">1.</strong> Correct metadata.</li>
+                          <li className="rounded-lg bg-library-paper px-3 py-2"><strong className="text-library-ink">2.</strong> Toggle only topics worth searching.</li>
+                          <li className="rounded-lg bg-library-paper px-3 py-2"><strong className="text-library-ink">3.</strong> Generate, approve, then export.</li>
+                        </ol>
+                      </div>
+                      <CourseMetadataEditor course={selectedCourse} onSave={updateCourse} readOnly={isArchivedCourse} />
+                      <form onSubmit={addManualResource} className="panel p-5">
+                        <p className="label">Manual Resource</p>
+                        <h3 className="text-xl font-bold">Add Approved Item</h3>
+                        {!hasSearchableTopics ? (
+                          <p className="mt-2 rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted">Mark at least one teaching topic as searchable first.</p>
+                        ) : null}
+                        <div className="mt-4 grid gap-3">
+                          <select className="control" value={manualResource.topic_id} disabled={isArchivedCourse || !hasSearchableTopics} onChange={(event) => setManualResource({ ...manualResource, topic_id: event.target.value })} required>
+                            <option value="">Select topic</option>
+                            {searchableTopics.map((topic) => (
+                              <option value={topic.id} key={topic.id}>Week {topic.week_number || "-"} · {topic.topic_title}</option>
+                            ))}
+                          </select>
+                          <select className="control" value={manualResource.category} disabled={isArchivedCourse} onChange={(event) => setManualResource({ ...manualResource, category: event.target.value })}>
+                            {categories.map((category) => <option key={category}>{category}</option>)}
+                          </select>
+                          <input className="control" placeholder="Resource title" value={manualResource.title} disabled={isArchivedCourse} onChange={(event) => setManualResource({ ...manualResource, title: event.target.value })} required />
+                          <input className="control" placeholder="Authors, separated by semicolon" value={manualResource.authors} disabled={isArchivedCourse} onChange={(event) => setManualResource({ ...manualResource, authors: event.target.value })} />
+                          <input className="control" placeholder="Year" value={manualResource.year} disabled={isArchivedCourse} onChange={(event) => setManualResource({ ...manualResource, year: event.target.value })} />
+                          <input className="control" placeholder="URL" value={manualResource.url} disabled={isArchivedCourse} onChange={(event) => setManualResource({ ...manualResource, url: event.target.value })} />
+                        </div>
+                        <button className="btn-gold mt-3 w-full" disabled={busy || isArchivedCourse || !hasSearchableTopics}>
+                          <Plus size={16} />
+                          Add Approved Resource
+                        </button>
+                      </form>
+                    </aside>
+
+                    <div className="space-y-5">
+                      <div className="panel p-5">
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="label">Extracted Topics</p>
+                            <h3 className="text-xl font-bold">Fast topic checklist</h3>
+                          </div>
+                          <BookOpen className="text-library-purple" />
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {detail.topics.map((topic) => (
+                            <TopicEditor key={topic.id} topic={topic} onSave={updateTopic} onDelete={deleteTopic} readOnly={isArchivedCourse} />
+                          ))}
+                        </div>
+                        <form onSubmit={addTopic} className="mt-4 rounded-xl border border-library-line bg-library-purple/5 p-3">
+                          <p className="text-sm font-bold text-library-purple">Add missing topic from compact</p>
+                          <div className="mt-3 grid gap-2 md:grid-cols-[90px_1fr]">
+                            <input className="control" placeholder="Week" value={newTopic.week_number} disabled={isArchivedCourse} onChange={(event) => setNewTopic({ ...newTopic, week_number: event.target.value })} />
+                            <input className="control" placeholder="Topic title" value={newTopic.topic_title} disabled={isArchivedCourse} onChange={(event) => setNewTopic({ ...newTopic, topic_title: event.target.value })} required />
+                            <input className="control md:col-span-2" placeholder="Module title" value={newTopic.module_title} disabled={isArchivedCourse} onChange={(event) => setNewTopic({ ...newTopic, module_title: event.target.value })} />
+                            <input className="control md:col-span-2" placeholder="Subtopics separated by semicolon" value={newTopic.subtopics} disabled={isArchivedCourse} onChange={(event) => setNewTopic({ ...newTopic, subtopics: event.target.value })} />
+                          </div>
+                          <button className="btn-secondary mt-3" disabled={busy || isArchivedCourse}>
+                            <Plus size={16} />
+                            Add Topic
+                          </button>
+                        </form>
+                      </div>
+
+                      <div className="grid gap-5 2xl:grid-cols-2">
+                        <div className="panel p-5">
+                          <p className="label">Review Queue</p>
+                          <h3 className="text-xl font-bold">Top 5 Per Topic</h3>
+                          <div className="mt-4 space-y-5">
+                            {detail.topics.map((topic) => (
+                              <div key={topic.id} className="rounded-xl border border-library-line bg-library-paper p-3">
+                                <div className="mb-3">
+                                  <p className="text-xs font-bold uppercase text-library-purple">Week {topic.week_number || "-"}</p>
+                                  <h4 className="font-bold">{topic.topic_title}</h4>
+                                </div>
+                                <div className="space-y-2">
+                                  {(candidatesByTopic[topic.id] || []).map((candidate) => (
+                                    <CandidateEditor key={candidate.id} candidate={candidate} onSave={updateCandidate} onApprove={(item) => reviewCandidate(item, "approve")} onReject={(item) => reviewCandidate(item, "reject")} readOnly={isArchivedCourse} />
+                                  ))}
+                                  {(candidatesByTopic[topic.id] || []).length === 0 ? <p className="text-sm text-library-muted">No generated resources yet.</p> : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="panel p-5">
+                          <p className="label">Approved Repository Records</p>
+                          <h3 className="text-xl font-bold">RCAABUT Export Preview</h3>
+                          <div className="mt-4 space-y-3">
+                            {detail.topics.map((topic) => (
+                              <ApprovedTopicPreview key={topic.id} topic={topic} resources={approvedByTopic[topic.id] || []} onSave={updateApprovedResource} onDelete={deleteApprovedResource} readOnly={isArchivedCourse} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
                 </section>
+              ) : routeCourseId ? (
+                <WelcomeEmptyState />
               ) : null}
 
-          {detail ? (
-            <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-              <div className="space-y-4">
-                <div className="panel p-5">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <p className="label">Extracted Topics</p>
-                      <h3 className="text-xl font-bold">Edit Before Search</h3>
-                    </div>
-                    <BookOpen className="text-library-purple" />
-                  </div>
-                  <div className="space-y-3">
-                    {detail.topics.map((topic) => (
-                      <TopicEditor key={topic.id} topic={topic} onSave={updateTopic} onDelete={deleteTopic} readOnly={isArchivedCourse} />
-                    ))}
-                  </div>
-                  <form onSubmit={addTopic} className="mt-4 rounded-xl border border-library-line bg-library-purple/5 p-3">
-                    <p className="text-sm font-bold text-library-purple">Add missing topic from compact</p>
-                    <div className="mt-3 grid gap-2 md:grid-cols-[90px_1fr]">
-                      <input
-                        className="control"
-                        placeholder="Week"
-                        value={newTopic.week_number}
-                        disabled={isArchivedCourse}
-                        onChange={(event) => setNewTopic({ ...newTopic, week_number: event.target.value })}
-                      />
-                      <input
-                        className="control"
-                        placeholder="Topic title"
-                        value={newTopic.topic_title}
-                        disabled={isArchivedCourse}
-                        onChange={(event) => setNewTopic({ ...newTopic, topic_title: event.target.value })}
-                        required
-                      />
-                      <input
-                        className="control md:col-span-2"
-                        placeholder="Module title"
-                        value={newTopic.module_title}
-                        disabled={isArchivedCourse}
-                        onChange={(event) => setNewTopic({ ...newTopic, module_title: event.target.value })}
-                      />
-                      <input
-                        className="control md:col-span-2"
-                        placeholder="Subtopics separated by semicolon"
-                        value={newTopic.subtopics}
-                        disabled={isArchivedCourse}
-                        onChange={(event) => setNewTopic({ ...newTopic, subtopics: event.target.value })}
-                      />
-                    </div>
-                    <button className="btn-secondary mt-3" disabled={busy || isArchivedCourse}>
-                      <Plus size={16} />
-                      Add Topic
-                    </button>
-                  </form>
-                </div>
-
-                <form onSubmit={addManualResource} className="panel p-5">
-                  <p className="label">Manual Resource</p>
-                  <h3 className="text-xl font-bold">Add Approved Item</h3>
-                  {!hasSearchableTopics ? (
-                    <p className="mt-2 rounded-lg bg-library-paper px-3 py-2 text-sm text-library-muted">
-                      Mark at least one teaching topic as searchable before adding manual resources.
-                    </p>
-                  ) : null}
-                  <div className="mt-4 grid gap-3 md:grid-cols-2">
-                    <select
-                      className="control"
-                      value={manualResource.topic_id}
-                      disabled={isArchivedCourse || !hasSearchableTopics}
-                      onChange={(event) => setManualResource({ ...manualResource, topic_id: event.target.value })}
-                      required
-                    >
-                      <option value="">Select topic</option>
-                      {searchableTopics.map((topic) => (
-                        <option value={topic.id} key={topic.id}>
-                          Week {topic.week_number || "-"} · {topic.topic_title}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="control"
-                      value={manualResource.category}
-                      disabled={isArchivedCourse}
-                      onChange={(event) => setManualResource({ ...manualResource, category: event.target.value })}
-                    >
-                      {categories.map((category) => (
-                        <option key={category}>{category}</option>
-                      ))}
-                    </select>
-                    <input
-                      className="control md:col-span-2"
-                      placeholder="Resource title"
-                      value={manualResource.title}
-                      disabled={isArchivedCourse}
-                      onChange={(event) => setManualResource({ ...manualResource, title: event.target.value })}
-                      required
-                    />
-                    <input
-                      className="control"
-                      placeholder="Authors, separated by semicolon"
-                      value={manualResource.authors}
-                      disabled={isArchivedCourse}
-                      onChange={(event) => setManualResource({ ...manualResource, authors: event.target.value })}
-                    />
-                    <input
-                      className="control"
-                      placeholder="Year"
-                      value={manualResource.year}
-                      disabled={isArchivedCourse}
-                      onChange={(event) => setManualResource({ ...manualResource, year: event.target.value })}
-                    />
-                    <input
-                      className="control md:col-span-2"
-                      placeholder="URL"
-                      value={manualResource.url}
-                      disabled={isArchivedCourse}
-                      onChange={(event) => setManualResource({ ...manualResource, url: event.target.value })}
-                    />
-                  </div>
-                  <button className="btn-gold mt-3" disabled={busy || isArchivedCourse || !hasSearchableTopics}>
-                    <Plus size={16} />
-                    Add Approved Resource
-                  </button>
-                </form>
-              </div>
-
-              <div className="space-y-4">
-                <div className="panel p-5">
-                  <p className="label">Review Queue</p>
-                  <h3 className="text-xl font-bold">Top 5 Per Topic</h3>
-                  <div className="mt-4 space-y-5">
-                    {detail.topics.map((topic) => (
-                      <div key={topic.id} className="rounded-xl border border-library-line bg-library-paper p-3">
-                        <div className="mb-3">
-                          <p className="text-xs font-bold uppercase text-library-purple">Week {topic.week_number || "-"}</p>
-                          <h4 className="font-bold">{topic.topic_title}</h4>
-                        </div>
-                        <div className="space-y-2">
-                          {(candidatesByTopic[topic.id] || []).map((candidate) => (
-                            <CandidateEditor
-                              key={candidate.id}
-                              candidate={candidate}
-                              onSave={updateCandidate}
-                              onApprove={(item) => reviewCandidate(item, "approve")}
-                              onReject={(item) => reviewCandidate(item, "reject")}
-                              readOnly={isArchivedCourse}
-                            />
-                          ))}
-                          {(candidatesByTopic[topic.id] || []).length === 0 ? (
-                            <p className="text-sm text-library-muted">No generated resources yet.</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="panel p-5">
-                  <p className="label">Approved Repository Records</p>
-                  <h3 className="text-xl font-bold">RCAABUT Export Preview</h3>
-                  <div className="mt-4 space-y-3">
-                    {detail.topics.map((topic) => (
-                      <ApprovedTopicPreview
-                        key={topic.id}
-                        topic={topic}
-                        resources={approvedByTopic[topic.id] || []}
-                        onSave={updateApprovedResource}
-                        onDelete={deleteApprovedResource}
-                        readOnly={isArchivedCourse}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-          ) : null}
+              <UploadCompactDialog open={uploadModalOpen} busy={busy} selectedFile={selectedFile} onClose={() => setUploadModalOpen(false)} onFileChange={setSelectedFile} onSubmit={handleUpload} />
+              <DeleteCourseDialog course={coursePendingDelete} busy={busy} onCancel={() => setCoursePendingDelete(null)} onConfirm={deleteCourse} />
             </>
           ) : null}
         </section>
@@ -1535,13 +1506,158 @@ function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: s
   );
 }
 
+function ShadcnSelect({
+  value,
+  options,
+  onChange,
+  className = ""
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value) || options[0];
+
+  return (
+    <div className={`relative ${className}`}>
+      <button
+        type="button"
+        className="control flex items-center justify-between gap-3 text-left"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{selected?.label}</span>
+        <ChevronDown className={`text-library-muted transition ${open ? "rotate-180" : ""}`} size={16} />
+      </button>
+      {open ? (
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-lg border border-library-line bg-white p-1 shadow-soft" role="listbox">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-bold transition ${
+                option.value === value ? "bg-library-purple/10 text-library-purple" : "text-library-ink hover:bg-library-paper"
+              }`}
+              role="option"
+              aria-selected={option.value === value}
+              onClick={() => {
+                onChange(option.value);
+                setOpen(false);
+              }}
+            >
+              {option.label}
+              {option.value === value ? <Check size={15} /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function UploadCompactDialog({
+  open,
+  busy,
+  selectedFile,
+  onClose,
+  onFileChange,
+  onSubmit
+}: {
+  open: boolean;
+  busy: boolean;
+  selectedFile: File | null;
+  onClose: () => void;
+  onFileChange: (file: File | null) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-library-ink/45 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title">
+      <form onSubmit={onSubmit} className="w-full max-w-xl overflow-hidden rounded-xl border border-library-line bg-white shadow-soft">
+        <div className="flex items-start justify-between gap-3 border-b border-library-line px-5 py-4">
+          <div>
+            <p className="label">Upload Compact</p>
+            <h2 id="upload-dialog-title" className="mt-1 text-2xl font-extrabold text-library-ink">Start a course extraction</h2>
+            <p className="mt-1 text-sm text-library-muted">Choose a PDF compact. We will open the new course workspace when extraction finishes.</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Close upload dialog" disabled={busy}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5">
+          <label className="flex min-h-[220px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-library-purple/35 bg-library-purple/5 px-4 py-10 text-center transition hover:border-library-purple">
+            <FileUp className="mb-3 text-library-purple" size={34} />
+            <span className="text-base font-extrabold text-library-ink">{selectedFile?.name || "Choose PDF"}</span>
+            <span className="mt-1 text-sm text-library-muted">Course compact only</span>
+            <input type="file" accept="application/pdf" className="sr-only" onChange={(event) => onFileChange(event.target.files?.[0] || null)} />
+          </label>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>Cancel</button>
+            <button className="btn-primary" disabled={busy || !selectedFile}>
+              {busy ? <Loader2 className="animate-spin" size={16} /> : <FileUp size={16} />}
+              Upload & Extract
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DeleteCourseDialog({
+  course,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  course: Course | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!course) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-library-ink/45 px-4 backdrop-blur-sm" role="alertdialog" aria-modal="true" aria-labelledby="delete-course-title" aria-describedby="delete-course-description">
+      <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-5 shadow-soft">
+        <div className="flex gap-3">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-red-50 text-red-700">
+            <AlertTriangle size={22} />
+          </div>
+          <div>
+            <h2 id="delete-course-title" className="text-xl font-extrabold text-library-ink">Delete this course?</h2>
+            <p id="delete-course-description" className="mt-2 text-sm leading-6 text-library-muted">
+              This permanently removes {course.course_code} and its topics, generated candidates, approved resources, exports, jobs, and uploaded compact records.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" className="btn-secondary" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="button" className="btn bg-red-700 text-white hover:bg-red-800" onClick={onConfirm} disabled={busy}>
+            {busy ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+            Delete course
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ActivityPanel({ activity }: { activity: ActivityLog[] }) {
   return (
     <div className="panel p-5">
       <p className="label">Activity Log</p>
       <h3 className="text-xl font-bold">Recent Actions</h3>
       <div className="mt-4 space-y-2">
-        {activity.slice(0, 8).map((item) => (
+        {activity.slice(0, 3).map((item) => (
           <div key={item.id} className="rounded-xl border border-library-line bg-library-paper p-3 text-sm">
             <p className="font-semibold">{item.action.replaceAll("_", " ")}</p>
             <p className="mt-1 text-library-muted">

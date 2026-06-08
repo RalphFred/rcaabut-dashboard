@@ -14,6 +14,7 @@ from app.models import (
     ApprovedResource,
     CandidateResource,
     Course,
+    CourseCompact,
     ExportRecord,
     ProcessingJob,
     SourceDatabase,
@@ -375,6 +376,46 @@ def restore_course(
     db.commit()
     db.refresh(course)
     return {"course": serialize_course(course)}
+
+
+@router.delete("/{course_id}")
+def delete_course(
+    course_id: int,
+    current_user: User = Depends(require_library_access),
+    db: Session = Depends(get_db),
+) -> dict:
+    course = db.get(Course, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    before = serialize_course(course)
+    approved_deleted = db.query(ApprovedResource).filter(ApprovedResource.course_id == course_id).delete(synchronize_session=False)
+    candidates_deleted = db.query(CandidateResource).filter(CandidateResource.course_id == course_id).delete(synchronize_session=False)
+    exports_deleted = db.query(ExportRecord).filter(ExportRecord.course_id == course_id).delete(synchronize_session=False)
+    jobs_deleted = db.query(ProcessingJob).filter(ProcessingJob.course_id == course_id).delete(synchronize_session=False)
+    compacts_deleted = db.query(CourseCompact).filter(CourseCompact.course_id == course_id).delete(synchronize_session=False)
+    topics_deleted = db.query(Topic).filter(Topic.course_id == course_id).delete(synchronize_session=False)
+    db.delete(course)
+    db.add(
+        ApprovalLog(
+            actor_id=current_user.id,
+            action="course_deleted",
+            entity_type="course",
+            entity_id=course_id,
+            before_json=dumps(before),
+            after_json=dumps(
+                {
+                    "topics_deleted": topics_deleted,
+                    "candidate_resources_deleted": candidates_deleted,
+                    "approved_resources_deleted": approved_deleted,
+                    "exports_deleted": exports_deleted,
+                    "jobs_deleted": jobs_deleted,
+                    "compacts_deleted": compacts_deleted,
+                }
+            ),
+        )
+    )
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/{course_id}/topics")
